@@ -632,10 +632,12 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 set -e
 	out_key_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 	out_file_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
-	# Get password from user if necessary
-	if [ $PKCS11_MODULE ]; then
+	# If PKCS11_ENGINE is defined assume we're using PKCS11
+	if [ $PKCS11_ENGINE ]; then
 		echo "easy-rsa stores the key specific configuration in the appropriate key file and will not store sensitive information"
-		
+		if [ -z $PKCS11_MODULE ]; then
+			echo -n "PKCS#11 Module Library: " && read -r PKCS11_MODULE
+		fi
 		if [ -z $PKCS11_SLOT ]; then
 			pkcs11-tool --module $PKCS11_MODULE --list-slots || die "unable to list slots using $PKCS11_MODULE"
 			echo -n "PKCS#11 Slot ID (hex): " && read -r PKCS11_SLOT
@@ -646,6 +648,9 @@ set -e
 		if [ -z $PKCS11_PIN ]; then
 			echo -n "PKCS#11 PIN: " && hide_read_pass PKCS11_PIN
 		fi
+		# Prepare key parameters for PKCS11
+		# TODO: Create error handling for PKCS11 key files being used as keys
+		# TODO: Create command to extract a certificate from a key and bootstrap a new CA (maybe ask the user if that's what they want if the slot has everything that's needed)
 		cat << EOF
 Current PKCS#11 Parameters
 TODO: Remove PIN Number and change with ******
@@ -689,7 +694,8 @@ EOF
 							--private  \
 							--sensitive
 		# Save the parameters for future usage to the out_key file
-		cat $out_key_tmp << EOF 
+		echo $out_key_tmp
+		cat << EOF >> "$out_key_tmp"
 # Parameters used to use the key in the module
 PKCS11_MODULE=${PKCS11_MODULE}
 PKCS11_SLOT=${PKCS11_SLOT}
@@ -715,8 +721,32 @@ EOF
 
 	# create the CA CSR:
 	if [ $PKCS11_MODULE ]; then
-		 easyrsa_openssl req -utf8 -new -sha256 \
-			-config engine.conf -engine pkcs11 -keyform engine \
+		pkcs11_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
+		cat << EOF >> $pkcs11_tmp
+openssl_conf = openssl_def
+
+[openssl_def]
+engines = engine_section
+
+[engine_section]
+pkcs11 = pkcs11_section
+
+[pkcs11_section]
+engine_id = easy_pkcs11
+dynamic_path = ${PKCS11_ENGINE}
+MODULE_PATH = ${PKCS11_MODULE}
+PIN = "${PKCS11_PIN}"
+init = 0
+
+[req]
+distinguished_name = req_distinguished_name
+
+[req_distinguished_name]
+
+EOF
+		cat $pkcs11_tmp
+		OPENSSL_CONF=$pkcs11_tmp easyrsa_openssl req -utf8 -new -sha256 \
+			-engine pkcs11 -keyform engine \
 			-key label_$PKCS11_LABEL \
 			-out $out_file_tmp \
 			$crypto_opts $opts
@@ -1783,6 +1813,9 @@ subjectAltName = $val" ;;
 	--p11-module)
 		empty_ok=1
 		export PKCS11_MODULE="$val" ;;
+	--p11-engine)
+		empty_ok=1
+		export PKCS11_ENGINE="$val" ;;
 	--p11-slot)
 		empty_ok=1
 		export PKCS11_SLOT="$val" ;;
