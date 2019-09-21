@@ -345,11 +345,12 @@ easyrsa_pkcs11_tool() {
 					--slot $PKCS11_SLOT \
 					--login \
 					--pin $PKCS11_PIN \
-					$@
+					"$@"
 }
 easyrsa_openssl() {
 	openssl_command=$1; shift
 
+	# TODO: Determine if we can put the pkcs11 configuration here
 	case $openssl_command in
 		makesafeconf) has_config=true;;
 		ca|req|srp|ts) has_config=true;;
@@ -636,17 +637,18 @@ set -e
 	if [ $PKCS11_ENGINE ]; then
 		echo "easy-rsa stores the key specific configuration in the appropriate key file and will not store sensitive information"
 		if [ -z $PKCS11_MODULE ]; then
-			echo -n "PKCS#11 Module Library: " && read -r PKCS11_MODULE
+			printf "PKCS#11 Module Library: " && read -r PKCS11_MODULE
 		fi
 		if [ -z $PKCS11_SLOT ]; then
 			pkcs11-tool --module $PKCS11_MODULE --list-slots || die "unable to list slots using $PKCS11_MODULE"
-			echo -n "PKCS#11 Slot ID (hex): " && read -r PKCS11_SLOT
+			printf "PKCS#11 Slot ID (hex): " && read -r PKCS11_SLOT
 		fi
 		if [ -z $PKCS11_LABEL ]; then
-			echo -n "PKCS#11 Object Label: " && read -r PKCS11_LABEL
+			# TODO: Validate PKCS11_LABEL otherwise a segfault is appearing
+			printf "PKCS#11 Object Label: " && read -r PKCS11_LABEL
 		fi
 		if [ -z $PKCS11_PIN ]; then
-			echo -n "PKCS#11 PIN: " && hide_read_pass PKCS11_PIN
+			printf "PKCS#11 PIN: " && hide_read_pass PKCS11_PIN
 		fi
 		# Prepare key parameters for PKCS11
 		# TODO: Create error handling for PKCS11 key files being used as keys
@@ -682,7 +684,7 @@ EOF
 	if [ $PKCS11_MODULE ]; then
 		if [ "$EASYRSA_ALGO" = "rsa" ]; then
 			KEY_TYPE=rsa:$EASYRSA_KEY_SIZE
-		elif [ "$EASYRSA_ALGO" == "ec" ]; then
+		elif [ "$EASYRSA_ALGO" = "ec" ]; then
 			KEY_TYPE=EC:$EASYRSA_CURVE
 		else
 			die "Unsupported \$EASYRSA_ALGO=$EASYRSA_ALGO"
