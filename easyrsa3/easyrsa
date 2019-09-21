@@ -348,9 +348,10 @@ easyrsa_pkcs11_tool() {
 					"$@"
 }
 easyrsa_openssl() {
+	#TODO: "Determine if we can put the pkcs11 configuration in easyrsa_openssl"
+
 	openssl_command=$1; shift
 
-	# TODO: Determine if we can put the pkcs11 configuration here
 	case $openssl_command in
 		makesafeconf) has_config=true;;
 		ca|req|srp|ts) has_config=true;;
@@ -503,8 +504,7 @@ $help_note"
 	[ "$1" = "test" ] && return 0
 
 
-	echo "$LINENO TODO: If operating a pkcs11 based ca, check the smartcard to make sure it's present and working"
-	exit 1
+	#TODO: "If operating a pkcs11 based ca, check the smartcard to make sure it's present and working"
 
 	# verify expected CA-specific dirs:
 	for i in issued certs_by_serial
@@ -605,9 +605,7 @@ If you intended to start a new CA, run init-pki first."
 
 	# If a private key exists here, a sub-ca was created but not signed.
 	# Notify the user and require a signed ca.crt or a init-pki:
-	# TODO: Modify verify_ca_init to set $out_key to a file with the object_id
-	# TODO: add support to init_pki to clear an object in a PKCS#11 device
-	# TODO: Consider using the private key file with all the configuration needed to access a device (including module)
+	#TODO: "add support to init_pki to clear an object in a PKCS#11 device"
 	[ -f "$out_key" ] && \
 		die "\
 A CA private key exists but no ca.crt is found in your PKI dir of:
@@ -630,11 +628,11 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 	# Default CN only when not in global EASYRSA_BATCH mode:
 	# shellcheck disable=SC2015
 	[ "$EASYRSA_BATCH" ] && opts="$opts -batch" || export EASYRSA_REQ_CN="Easy-RSA CA"
-set -e
 	out_key_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 	out_file_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 	# If PKCS11_ENGINE is defined assume we're using PKCS11
 	if [ $PKCS11_ENGINE ]; then
+		# Prepare parameters for PKCS11
 		echo "easy-rsa stores the key specific configuration in the appropriate key file and will not store sensitive information"
 		if [ -z $PKCS11_MODULE ]; then
 			printf "PKCS#11 Module Library: " && read -r PKCS11_MODULE
@@ -644,24 +642,16 @@ set -e
 			printf "PKCS#11 Slot ID (hex): " && read -r PKCS11_SLOT
 		fi
 		if [ -z $PKCS11_LABEL ]; then
-			# TODO: Validate PKCS11_LABEL otherwise a segfault is appearing
+			#TODO: "Validate PKCS11_LABEL otherwise a segfault is appearing"
 			printf "PKCS#11 Object Label: " && read -r PKCS11_LABEL
 		fi
 		if [ -z $PKCS11_PIN ]; then
 			printf "PKCS#11 PIN: " && hide_read_pass PKCS11_PIN
 		fi
-		# Prepare key parameters for PKCS11
-		# TODO: Create error handling for PKCS11 key files being used as keys
-		# TODO: Create command to extract a certificate from a key and bootstrap a new CA (maybe ask the user if that's what they want if the slot has everything that's needed)
-		cat << EOF
-Current PKCS#11 Parameters
-TODO: Remove PIN Number and change with ******
-PKCS11_MODULE=${PKCS11_MODULE}
-PKCS11_SLOT=${PKCS11_SLOT}
-PKCS11_LABEL=${PKCS11_LABEL}
-PKCS11_PIN=${PKCS11_PIN}
-EOF
-
+		
+		#TODO: "Create error handling for PKCS11 key files being used as keys"
+		#TODO: "Create command to extract a certificate from a key and bootstrap a new CA
+		#		(maybe ask the user if that is what they want if the slot has everything that is needed)"
 	elif [ ! $nopass ] && ( [ -z "$EASYRSA_PASSOUT" ] || [ -z "$EASYRSA_PASSIN" ] ); then
 		out_key_pass_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 		echo
@@ -697,7 +687,7 @@ EOF
 							--sensitive
 		# Save the parameters for future usage to the out_key file
 		echo $out_key_tmp
-		cat << EOF >> "$out_key_tmp"
+		cat > "$out_key_tmp" << EOF
 # Parameters used to use the key in the module
 PKCS11_MODULE=${PKCS11_MODULE}
 PKCS11_SLOT=${PKCS11_SLOT}
@@ -724,6 +714,7 @@ EOF
 	# create the CA CSR:
 	if [ $PKCS11_MODULE ]; then
 		pkcs11_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
+		# Write a PKCS specific config.  This should also work in easyrsa_openssl()
 		cat << EOF >> $pkcs11_tmp
 openssl_conf = openssl_def
 
@@ -746,7 +737,6 @@ distinguished_name = req_distinguished_name
 [req_distinguished_name]
 
 EOF
-		cat $pkcs11_tmp
 		OPENSSL_CONF=$pkcs11_tmp easyrsa_openssl req -utf8 -new -sha256 \
 			-engine pkcs11 -keyform engine \
 			-key label_$PKCS11_LABEL \
@@ -872,6 +862,7 @@ key: $key_out
 
 # common signing backend
 sign_req() {
+	#TODO: "add support for sign-req command"
 	crt_type="$1"
 	opts=""
 	req_in="$EASYRSA_PKI/reqs/$2.req"
@@ -1035,6 +1026,7 @@ Matching file found at: "
 
 # revoke backend
 revoke() {
+	#TODO: "Add PKCS#11 support for revoke command"
 	verify_ca_init
 
 	# pull filename base:
@@ -1149,6 +1141,7 @@ input in file: $req_in"
 
 # renew backend
 renew() {
+	##TODO: "Ensure PKCS#11 support works with renew command"
 	verify_ca_init
 
 	# pull filename base:
@@ -1824,6 +1817,9 @@ subjectAltName = $val" ;;
 	--p11-pin)
 		empty_ok=1
 		export PKCS11_PIN="$val" ;;
+	--p11-label)
+		empty_ok=1
+		export PKCS11_LABEL="$val" ;;
 	*)
 		break ;;
 	esac
