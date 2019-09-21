@@ -217,3 +217,7 @@ fi
 
 #set_var EASYRSA_BATCH		""
 
+#set_var PKCS11_MODULE_PATH "/usr/lib/libopensc.so"
+#set_var PKCS11_PIN		"1234"
+#set_var PKCS11_MAX_RSA_KEY_SIZE "2018"
+#set_var PKCS11_TOOL	"pkcs11-tool"

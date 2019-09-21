@@ -228,6 +228,12 @@ Certificate & Request options: (these impact cert/req field values)
 --curve=NAME    : for elliptic curve, sets the named curve to use
 --copy-ext      : Copy included request X509 extensions (namely subjAltName
 
+PKCS#11 Options:
+
+--p11-module=PATH 	: Path to the module to use for the PKCS#11 interface
+--p11-slot=SLOT_NO	: Slot on the token to use
+--p11-pin=PIN		: PIN number, if not specified will be asked for
+
 Organizational DN options: (only used with the 'org' DN mode)
   (values may be blank for org DN options)
 
@@ -334,6 +340,13 @@ cleanup() {
 	echo "" # just to get a clean line
 } # => cleanup()
 
+easyrsa_pkcs11_tool() {
+	pkcs11-tool --module $PKCS11_MODULE \
+					--slot $PKCS11_SLOT \
+					--login \
+					--pin $PKCS11_PIN \
+					$@
+}
 easyrsa_openssl() {
 	openssl_command=$1; shift
 
@@ -488,6 +501,10 @@ $help_note"
 	# test callers don't care about CA-specific dir structure
 	[ "$1" = "test" ] && return 0
 
+
+	echo "$LINENO TODO: If operating a pkcs11 based ca, check the smartcard to make sure it's present and working"
+	exit 1
+
 	# verify expected CA-specific dirs:
 	for i in issued certs_by_serial
 	do
@@ -569,7 +586,7 @@ build_ca() {
 
 	verify_pki_init
 	[ "$EASYRSA_ALGO" = "ec" ] && verify_curve
-
+	
 	# setup for the simpler sub-CA situation and overwrite with root-CA if needed:
 	out_file="$EASYRSA_PKI/reqs/ca.req"
 	out_key="$EASYRSA_PKI/private/ca.key"
@@ -578,14 +595,18 @@ build_ca() {
 		opts="$opts -x509 -days $EASYRSA_CA_EXPIRE "
 	fi
 
-	# Test for existing CA, and complain if already present
+	# Test for existing CA, and complain if already present	
 	if verify_ca_init test; then
 		die "\
 Unable to create a CA as you already seem to have one set up.
 If you intended to start a new CA, run init-pki first."
 	fi
+
 	# If a private key exists here, a sub-ca was created but not signed.
 	# Notify the user and require a signed ca.crt or a init-pki:
+	# TODO: Modify verify_ca_init to set $out_key to a file with the object_id
+	# TODO: add support to init_pki to clear an object in a PKCS#11 device
+	# TODO: Consider using the private key file with all the configuration needed to access a device (including module)
 	[ -f "$out_key" ] && \
 		die "\
 A CA private key exists but no ca.crt is found in your PKI dir of:
@@ -608,11 +629,33 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 	# Default CN only when not in global EASYRSA_BATCH mode:
 	# shellcheck disable=SC2015
 	[ "$EASYRSA_BATCH" ] && opts="$opts -batch" || export EASYRSA_REQ_CN="Easy-RSA CA"
-
+set -e
 	out_key_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 	out_file_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 	# Get password from user if necessary
-	if [ ! $nopass ] && ( [ -z "$EASYRSA_PASSOUT" ] || [ -z "$EASYRSA_PASSIN" ] ); then
+	if [ $PKCS11_MODULE ]; then
+		echo "easy-rsa stores the key specific configuration in the appropriate key file and will not store sensitive information"
+		
+		if [ -z $PKCS11_SLOT ]; then
+			pkcs11-tool --module $PKCS11_MODULE --list-slots || die "unable to list slots using $PKCS11_MODULE"
+			echo -n "PKCS#11 Slot ID (hex): " && read -r PKCS11_SLOT
+		fi
+		if [ -z $PKCS11_LABEL ]; then
+			echo -n "PKCS#11 Object Label: " && read -r PKCS11_LABEL
+		fi
+		if [ -z $PKCS11_PIN ]; then
+			echo -n "PKCS#11 PIN: " && hide_read_pass PKCS11_PIN
+		fi
+		cat << EOF
+Current PKCS#11 Parameters
+TODO: Remove PIN Number and change with ******
+PKCS11_MODULE=${PKCS11_MODULE}
+PKCS11_SLOT=${PKCS11_SLOT}
+PKCS11_LABEL=${PKCS11_LABEL}
+PKCS11_PIN=${PKCS11_PIN}
+EOF
+
+	elif [ ! $nopass ] && ( [ -z "$EASYRSA_PASSOUT" ] || [ -z "$EASYRSA_PASSIN" ] ); then
 		out_key_pass_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 		echo
 		printf "Enter New CA Key Passphrase: "
@@ -629,33 +672,65 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 			die "Passphrases do not match."
 		fi
 	fi
-
-	# create the CA key using AES256
-	crypto_opts=""
-	if [ ! $nopass ]; then
-		crypto_opts="$crypto"
-		[ -z "$EASYRSA_PASSOUT" ] && crypto_opts="$crypto_opts -passout file:$out_key_pass_tmp"
+	
+	# Create key pair
+	if [ $PKCS11_MODULE ]; then
+		if [ "$EASYRSA_ALGO" = "rsa" ]; then
+			KEY_TYPE=rsa:$EASYRSA_KEY_SIZE
+		elif [ "$EASYRSA_ALGO" == "ec" ]; then
+			KEY_TYPE=EC:$EASYRSA_CURVE
+		else
+			die "Unsupported \$EASYRSA_ALGO=$EASYRSA_ALGO"
+		fi
+		
+		easyrsa_pkcs11_tool --keypairgen --key-type $KEY_TYPE \
+							--label $PKCS11_LABEL \
+							--usage-sign \
+							--private  \
+							--sensitive
+		# Save the parameters for future usage to the out_key file
+		cat $out_key_tmp << EOF 
+# Parameters used to use the key in the module
+PKCS11_MODULE=${PKCS11_MODULE}
+PKCS11_SLOT=${PKCS11_SLOT}
+PKCS11_LABEL=${PKCS11_LABEL}
+EOF
+	else
+		crypto_opts=""
+		if [ ! $nopass ]; then
+			crypto_opts="$crypto"
+			[ -z "$EASYRSA_PASSOUT" ] && crypto_opts="$crypto_opts -passout file:$out_key_pass_tmp"
+		fi
+		if [ "$EASYRSA_ALGO" = "rsa" ]; then
+			#shellcheck disable=SC2086
+			"$EASYRSA_OPENSSL" genrsa -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"} "$EASYRSA_ALGO_PARAMS" || \
+				die "Failed create CA private key"
+		elif [ "$EASYRSA_ALGO" = "ec" ]; then
+			#shellcheck disable=SC2086
+			"$EASYRSA_OPENSSL" ecparam -in "$EASYRSA_ALGO_PARAMS" -genkey | \
+				"$EASYRSA_OPENSSL" ec -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"} || \
+				die "Failed create CA private key"
+		fi
 	fi
-	if [ "$EASYRSA_ALGO" = "rsa" ]; then
+
+	# create the CA CSR:
+	if [ $PKCS11_MODULE ]; then
+		 easyrsa_openssl req -utf8 -new -sha256 \
+			-config engine.conf -engine pkcs11 -keyform engine \
+			-key label_$PKCS11_LABEL \
+			-out $out_file_tmp \
+			$crypto_opts $opts
+
+	else
+		crypto_opts=""
+		[ ! $nopass ] && [ -z "$EASYRSA_PASSIN" ] && crypto_opts="-passin file:$out_key_pass_tmp"
+
 		#shellcheck disable=SC2086
-		"$EASYRSA_OPENSSL" genrsa -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"} "$EASYRSA_ALGO_PARAMS" || \
-			die "Failed create CA private key"
-	elif [ "$EASYRSA_ALGO" = "ec" ]; then
-		#shellcheck disable=SC2086
-		"$EASYRSA_OPENSSL" ecparam -in "$EASYRSA_ALGO_PARAMS" -genkey | \
-			"$EASYRSA_OPENSSL" ec -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"} || \
-			die "Failed create CA private key"
+		easyrsa_openssl req -utf8 -new -key "$out_key_tmp" \
+			-keyout "$out_key_tmp" -out "$out_file_tmp" $crypto_opts $opts ${EASYRSA_PASSIN:+-passin "$EASYRSA_PASSIN"} || \
+			die "Failed to build the CA"
 	fi
-
-	# create the CA keypair:
-	crypto_opts=""
-	[ ! $nopass ] && [ -z "$EASYRSA_PASSIN" ] && crypto_opts="-passin file:$out_key_pass_tmp"
-
-	#shellcheck disable=SC2086
-	easyrsa_openssl req -utf8 -new -key "$out_key_tmp" \
-		-keyout "$out_key_tmp" -out "$out_file_tmp" $crypto_opts $opts ${EASYRSA_PASSIN:+-passin "$EASYRSA_PASSIN"} || \
-		die "Failed to build the CA"
-
+	
 	mv "$out_key_tmp" "$out_key"
 	mv "$out_file_tmp" "$out_file"
 	[ -f "$out_key_pass_tmp" ] && rm "$out_key_pass_tmp"
@@ -1705,6 +1780,15 @@ while :; do
 		export EASYRSA_EXTRA_EXTS="\
 $EASYRSA_EXTRA_EXTS
 subjectAltName = $val" ;;
+	--p11-module)
+		empty_ok=1
+		export PKCS11_MODULE="$val" ;;
+	--p11-slot)
+		empty_ok=1
+		export PKCS11_SLOT="$val" ;;
+	--p11-pin)
+		empty_ok=1
+		export PKCS11_PIN="$val" ;;
 	*)
 		break ;;
 	esac
