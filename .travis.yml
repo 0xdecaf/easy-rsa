@@ -5,14 +5,14 @@ matrix:
   #allow_failures:
   include:
 
-    - os: linux
-      dist: bionic
-      env: PATH=/usr/bin:/bin:./:/usr/local/bin
-      script:
-        - openssl version
-        - shellcheck --version
-        - bash -c 'export SHELLCHECK_OPTS="-S warning -e SC2006"; shopt -s globstar; shellcheck **/*.sh easyrsa3/easyrsa'
-        - sh op_test.sh -vv
+    # - os: linux
+    #   dist: bionic
+    #   env: PATH=/usr/bin:/bin:./:/usr/local/bin
+    #   script:
+    #     - openssl version
+    #     - shellcheck --version
+    #     - bash -c 'export SHELLCHECK_OPTS="-S warning -e SC2006"; shopt -s globstar; shellcheck **/*.sh easyrsa3/easyrsa'
+    #     - sh op_test.sh -vv
     
     - os: linux
       dist: bionic
@@ -35,9 +35,9 @@ matrix:
         #- bash -c 'export SHELLCHECK_OPTS="-S warning -e SC2006"; shopt -s globstar; shellcheck **/*.sh easyrsa3/easyrsa'
         - sudo sh op_test.sh -vv
 
-    - os: osx
-      osx_image: xcode10.1
-      script:
-        - openssl version
-        - sh op_test.sh -vv
+    # - os: osx
+    #   osx_image: xcode10.1
+    #   script:
+    #     - openssl version
+    #     - sh op_test.sh -vv
 

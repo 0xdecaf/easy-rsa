@@ -683,8 +683,9 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 		easyrsa_pkcs11_tool --keypairgen --key-type $KEY_TYPE \
 							--label $PKCS11_LABEL \
 							--usage-sign \
-							--private  \
-							--sensitive
+							--private
+							# TODO: figure out how to determine if the --sensitive flag is available on pkcs11-tool  
+							# --sensitive
 		# Save the parameters for future usage to the out_key file
 		echo $out_key_tmp
 		cat > "$out_key_tmp" << EOF
