@@ -2,7 +2,7 @@ language: bash
 sudo: false
 
 matrix:
-  allow_failures:
+  #allow_failures:
   include:
 
     - os: linux
@@ -24,7 +24,7 @@ matrix:
         - PKCS11_LABEL=my-test-token
       before_install:
         - sudo apt-get install -y softhsm2 libengine-pkcs11-openssl1.1
-        - softhsm2-util --init-token --free --lenel test-token --so-pin 123456 --pin 1234
+        - softhsm2-util --init-token --free --label test-token --so-pin 123456 --pin 1234
       script:
         - export PKCS11_SLOT=`softhsm2-util --show-slots | grep ^Slot | head -n 1 | cut -d ' ' -f 2`
         - openssl version
