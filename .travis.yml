@@ -19,7 +19,7 @@ matrix:
       env: 
         - PATH=/usr/bin:/bin:./:/usr/local/bin
         - PKCS11_ENGINE=/usr/lib/x86_64-linux-gnu/engines-1.1/libpkcs11.so
-        - PKCS11_MODULE=usr/lib/softhsm/libsofthsm2.so
+        - PKCS11_MODULE=/usr/lib/softhsm/libsofthsm2.so
         - PKCS11_PIN=1234
         - PKCS11_LABEL=my-test-token
       before_install:
