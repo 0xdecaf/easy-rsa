@@ -26,7 +26,6 @@ matrix:
         # opensc to get pkcs11-tool
         - sudo apt-get install -y opensc softhsm2 libengine-pkcs11-openssl1.1
         - sudo mkdir -p /var/lib/softhsm/tokens
-        #- sudo chmod 777 /var/lib/softhsm/tokens
         - sudo softhsm2-util --init-token --free --label test-token --so-pin 123456 --pin 1234
       script:
         - export PKCS11_SLOT=`sudo softhsm2-util --show-slots | grep ^Slot | head -n 1 | cut -d ' ' -f 2`

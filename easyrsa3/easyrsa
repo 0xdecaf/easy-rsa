@@ -775,8 +775,10 @@ EOF
 		[ ! $nopass ] && [ -z "$EASYRSA_PASSIN" ] && crypto_opts="-passin file:$out_key_pass_tmp"
 
 		#shellcheck disable=SC2086
-		easyrsa_openssl req -utf8 -new -key "$out_key_tmp" \
-			-keyout "$out_key_tmp" -out "$out_file_tmp" $crypto_opts $opts ${EASYRSA_PASSIN:+-passin "$EASYRSA_PASSIN"} || \
+		easyrsa_openssl req -utf8 -new \
+			-key "$out_key_tmp" -keyout "$out_key_tmp" \
+			-out "$out_file_tmp" \
+			$crypto_opts $opts ${EASYRSA_PASSIN:+-passin "$EASYRSA_PASSIN"} || \
 			die "Failed to build the CA"
 	fi
 	
