@@ -341,7 +341,7 @@ cleanup() {
 } # => cleanup()
 
 debug() {
-	echo "DEBUG: $@" > /dev/stderr
+	echo "DEBUG: " "$@" > /dev/stderr
 }
 
 easyrsa_pkcs11_tool() {
@@ -369,7 +369,7 @@ easyrsa_openssl() {
 	esac
 
 	# If the key is in the engine, we need to configure it as well
-	if [ "$key_in_engine" = "true" ]; then
+	if [ "$KEY_IN_ENGINE" = "true" ]; then
 		has_config=true
 	fi
 
@@ -389,7 +389,7 @@ easyrsa_openssl() {
 			$EASYRSA_EXTRA_EXTS
 		EOF
 	fi
-	if [ "$key_in_engine" = "true" ]; then
+	if [ "$KEY_IN_ENGINE" = "true" ]; then
 		# Temporary file for PKCS11 config
 		pkcs11_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 			# Write a PKCS specific config.  This should also work in easyrsa_openssl()
@@ -445,7 +445,7 @@ EOF
 		cp "$easyrsa_openssl_conf" "$EASYRSA_SAFE_CONF"
 		err=$?
 	else
-		if [ "$key_in_engine" = "true" ]; then
+		if [ "$KEY_IN_ENGINE" = "true" ]; then
 			tmp_conf="$pkcs11_tmp"
 		fi
 		set -x
