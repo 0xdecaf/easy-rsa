@@ -340,8 +340,12 @@ cleanup() {
 	echo "" # just to get a clean line
 } # => cleanup()
 
+debug() {
+	echo "DEBUG: $@" > /dev/stderr
+}
+
 easyrsa_pkcs11_tool() {
-	echo "DEBUG: " pkcs11-tool --module $PKCS11_MODULE \
+	debug pkcs11-tool --module $PKCS11_MODULE \
 					--slot $PKCS11_SLOT \
 					--login \
 					--pin $PKCS11_PIN \
@@ -370,7 +374,7 @@ easyrsa_openssl() {
 	fi
 
 	if ! $has_config; then
-		echo "DEBUG: " "$EASYRSA_OPENSSL" "$openssl_command" "$@"
+		debug "$EASYRSA_OPENSSL" "$openssl_command" "$@"
 		"$EASYRSA_OPENSSL" "$openssl_command" "$@"
 		return
 	fi
@@ -747,12 +751,12 @@ EOF
 		fi
 		if [ "$EASYRSA_ALGO" = "rsa" ]; then
 			#shellcheck disable=SC2086
-			echo "DEBUG: " "$EASYRSA_OPENSSL" genrsa -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"} "$EASYRSA_ALGO_PARAMS"
+			debug "$EASYRSA_OPENSSL" genrsa -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"} "$EASYRSA_ALGO_PARAMS"
 			"$EASYRSA_OPENSSL" genrsa -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"} "$EASYRSA_ALGO_PARAMS" || \
 				die "Failed create CA private key"
 		elif [ "$EASYRSA_ALGO" = "ec" ]; then
 			#shellcheck disable=SC2086
-			echo "DEBUG:" "$EASYRSA_OPENSSL" ecparam -in "$EASYRSA_ALGO_PARAMS" -genkey | \
+			debug "$EASYRSA_OPENSSL" ecparam -in "$EASYRSA_ALGO_PARAMS" -genkey | \
 				"$EASYRSA_OPENSSL" ec -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"}
 
 			"$EASYRSA_OPENSSL" ecparam -in "$EASYRSA_ALGO_PARAMS" -genkey | \
