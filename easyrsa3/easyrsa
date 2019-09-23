@@ -341,7 +341,17 @@ cleanup() {
 } # => cleanup()
 
 debug() {
-	echo "DEBUG: " "$@" > /dev/stderr
+	red=`tput setaf 1`
+	green=`tput setaf 3`
+	reset=`tput sgr0`
+
+	echo -e "${red}DEBUG: ${green}[$(caller)]${red}" "$@" "${reset}" > /dev/stderr
+}
+
+transform_openssl_call() {
+	# Take an arbitray call to openssl, if appropriate, parse the keyfile and return a new 
+	# set of parameters with PKCS#11 configured
+	echo "test"
 }
 
 easyrsa_pkcs11_tool() {
@@ -359,22 +369,24 @@ easyrsa_pkcs11_tool() {
 }
 easyrsa_openssl() {
 	#TODO: "Determine if we can put the pkcs11 configuration in easyrsa_openssl"
-
+	debug "openssl " "$@"
 	openssl_command=$1; shift
 
+	if [ $PKCS11_ENGINE ]; then
+		KEY_IN_ENGINE=true
+	fi
 	case $openssl_command in
 		makesafeconf) has_config=true;;
 		ca|req|srp|ts) has_config=true;;
 		*) has_config=false;;
 	esac
-
+	debug "KEY_IN_ENGINE=$KEY_IN_ENGINE has_config=$has_config"
 	# If the key is in the engine, we need to configure it as well
 	if [ "$KEY_IN_ENGINE" = "true" ]; then
 		has_config=true
 	fi
 
 	if ! $has_config; then
-		debug "$EASYRSA_OPENSSL" "$openssl_command" "$@"
 		"$EASYRSA_OPENSSL" "$openssl_command" "$@"
 		return
 	fi
@@ -445,7 +457,10 @@ EOF
 		cp "$easyrsa_openssl_conf" "$EASYRSA_SAFE_CONF"
 		err=$?
 	else
+		
 		if [ "$KEY_IN_ENGINE" = "true" ]; then
+			
+			debug "Setting Environment variable for PKCS#11 operations"
 			tmp_conf="$pkcs11_tmp"
 		fi
 		set -x
@@ -681,6 +696,7 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 	out_key_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 	out_file_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 	# If PKCS11_ENGINE is defined assume we're using PKCS11
+
 	if [ $PKCS11_ENGINE ]; then
 		# Prepare parameters for PKCS11
 		echo "easy-rsa stores the key specific configuration in the appropriate key file and will not store sensitive information"
@@ -751,13 +767,11 @@ EOF
 		fi
 		if [ "$EASYRSA_ALGO" = "rsa" ]; then
 			#shellcheck disable=SC2086
-			debug "$EASYRSA_OPENSSL" genrsa -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"} "$EASYRSA_ALGO_PARAMS"
 			"$EASYRSA_OPENSSL" genrsa -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"} "$EASYRSA_ALGO_PARAMS" || \
 				die "Failed create CA private key"
 		elif [ "$EASYRSA_ALGO" = "ec" ]; then
 			#shellcheck disable=SC2086
-			debug "$EASYRSA_OPENSSL" ecparam -in "$EASYRSA_ALGO_PARAMS" -genkey | \
-				"$EASYRSA_OPENSSL" ec -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"}
+			"$EASYRSA_OPENSSL" ec -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"}
 
 			"$EASYRSA_OPENSSL" ecparam -in "$EASYRSA_ALGO_PARAMS" -genkey | \
 				"$EASYRSA_OPENSSL" ec -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"} || \
