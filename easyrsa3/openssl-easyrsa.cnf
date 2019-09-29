@@ -9,6 +9,7 @@ pkcs11 = pkcs11_section
 
 [pkcs11_section]
 engine_id = pkcs11
+MODULE_PATH = $ENV::PKCS11_MODULE_PATH
 
 ####################################################################
 [ ca ]

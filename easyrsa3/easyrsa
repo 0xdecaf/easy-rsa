@@ -73,7 +73,8 @@ cmd_help() {
       Creates a new CA"
       			opts="
         nopass  - do not encrypt the CA key (default is encrypted)
-        subca   - create a sub-CA keypair and request (default is a root CA)" ;;
+        subca   - create a sub-CA keypair and request (default is a root CA)
+				pkcs11  - Use a PKCS#11 token for key storage (nopass ignored)" ;;
 		gen-dh) text="
   gen-dh
       Generates DH (Diffie-Hellman) parameters" ;;
@@ -229,10 +230,9 @@ Certificate & Request options: (these impact cert/req field values)
 --copy-ext      : Copy included request X509 extensions (namely subjAltName
 
 PKCS#11 Options:
-
+#TODO: Determine which global options are appropriate
 --p11-module=PATH 	: Path to the module to use for the PKCS#11 interface
---p11-slot=SLOT_NO	: Slot on the token to use
---p11-pin=PIN		: PIN number, if not specified will be asked for
+--p11-pin=PIN		    : PIN number, if not specified will be asked for
 
 Organizational DN options: (only used with the 'org' DN mode)
   (values may be blank for org DN options)
@@ -347,32 +347,26 @@ debug() {
 
 	echo -e "${red}DEBUG: ${green}[$(caller)]${red}" "$@" "${reset}" > /dev/stderr
 }
-
-transform_openssl_call() {
-	# Take an arbitray call to openssl, if appropriate, parse the keyfile and return a new 
-	# set of parameters with PKCS#11 configured
-	echo "test"
-}
-
 easyrsa_pkcs11_tool() {
-	debug pkcs11-tool --module $PKCS11_MODULE \
+	debug pkcs11-tool --module $PKCS11_MODULE_PATH \
 					--slot $PKCS11_SLOT \
 					--login \
 					--pin $PKCS11_PIN \
 					"$@"
 
-	pkcs11-tool --module "$PKCS11_MODULE" \
+	pkcs11-tool --module "$PKCS11_MODULE_PATH" \
 					--slot "$PKCS11_SLOT" \
 					--login \
 					--pin "$PKCS11_PIN" \
 					"$@"
 }
+
 easyrsa_openssl() {
 	#TODO: "Determine if we can put the pkcs11 configuration in easyrsa_openssl"
 	debug "openssl $@"
 	openssl_command=$1; shift
 
-	if [ $PKCS11_ENGINE ]; then
+	if [ $PKCS11_MODULE_PATH ]; then
 		KEY_IN_ENGINE=true
 		debug "Assuming PKCS#11 Usage"
 	fi
@@ -381,10 +375,6 @@ easyrsa_openssl() {
 		ca|req|srp|ts) has_config=true;;
 		*) has_config=false;;
 	esac
-	# If the key is in the engine, we need to configure it as well
-	if [ "$KEY_IN_ENGINE" = "true" ]; then
-		has_config=true
-	fi
 
 	if ! $has_config; then
 		debug "$EASYRSA_OPENSSL" "$openssl_command" "$@"
@@ -402,33 +392,8 @@ easyrsa_openssl() {
 			$EASYRSA_EXTRA_EXTS
 		EOF
 	fi
-	if [ "$KEY_IN_ENGINE" = "true" ]; then
-		# Temporary file for PKCS11 config
-		pkcs11_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
-			# Write a PKCS specific config.  This should also work in easyrsa_openssl()
-			cat > "$pkcs11_tmp" << EOF
-openssl_conf = openssl_def
+	
 
-[openssl_def]
-engines = engine_section
-
-[engine_section]
-pkcs11 = pkcs11_section
-
-[pkcs11_section]
-engine_id = pkcs11
-MODULE_PATH = ${PKCS11_MODULE}
-
-[req]
-distinguished_name = req_distinguished_name
-
-[req_distinguished_name]
-
-EOF
-		# Setup parameters to point to the appropriate key
-		openssl_pkcs11_params="-engine pkcs11 -keyform engine -key label_$PKCS11_LABEL"
-	fi
-	# TODO: If PKCS11_MODULE is configured, 
 	# Make LibreSSL safe config file from OpenSSL config file
 	sed \
 		-e "s\`ENV::EASYRSA\`EASYRSA\`g" \
@@ -447,21 +412,30 @@ EOF
 		-e "s\`\$EASYRSA_REQ_OU\`$EASYRSA_REQ_OU\`g" \
 		-e "s\`\$EASYRSA_REQ_CN\`$EASYRSA_REQ_CN\`g" \
 		-e "s\`\$EASYRSA_REQ_EMAIL\`$EASYRSA_REQ_EMAIL\`g" \
+		-e "s\`\$ENV::PKCS11_MODULE_PATH\`$PKCS11_MODULE_PATH\`g" \
 		${EASYRSA_EXTRA_EXTS:+-e "/^#%EXTRA_EXTS%/r $easyrsa_extra_exts"} \
 		"$EASYRSA_SSL_CONF" > "$easyrsa_openssl_conf" ||
 		die "Failed to update $easyrsa_openssl_conf"
+  
+	if [ $pkcs11 ]; then
+	  set -x
+		#cat $easyrsa_openssl_conf
+		# TODO: configure private_key=label_$PKCS11_
+		sed -i'' -e "s/=.*\/private\/ca.key/= label_$PKCS11_LABEL/g" "$easyrsa_openssl_conf" \
+			|| die "Failed to configure PKCS#11 token"
+		set +x
+				# Setup parameters to point to the appropriate key
+		openssl_pkcs11_params="-engine pkcs11 -keyform engine"
+
+	fi
 
 	if [ "$openssl_command" = "makesafeconf" ]; then
 		cp "$easyrsa_openssl_conf" "$EASYRSA_SAFE_CONF"
 		err=$?
 	else
-		if [ "$KEY_IN_ENGINE" = "true" ]; then
-			debug "Setting Environment variable for PKCS#11 operations"
-			tmp_conf="$pkcs11_tmp"
-		fi
-		debug "Actual: " OPENSSL_CONF=$tmp_conf "$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
+		debug "Actual: " "$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
 		set -x
-		OPENSSL_CONF=$tmp_conf "$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
+		"$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
 		set +x
 		err=$?
 	fi
@@ -637,11 +611,13 @@ build_ca() {
 	opts=""
 	sub_ca=""
 	nopass=""
+	pkcs11=""
 	crypto="-aes256"
 	while [ -n "$1" ]; do
 		case "$1" in
 			subca) sub_ca=1 ;;
 			nopass) nopass=1 ;;
+			pkcs11) pkcs11=1 ;;
 			*) warn "Ignoring unknown command option: '$1'" ;;
 		esac
 		shift
@@ -692,16 +668,16 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 	[ "$EASYRSA_BATCH" ] && opts="$opts -batch" || export EASYRSA_REQ_CN="Easy-RSA CA"
 	out_key_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 	out_file_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
-	# If PKCS11_ENGINE is defined assume we're using PKCS11
 
-	if [ $PKCS11_ENGINE ]; then
+	if [ $pkcs11 ]; then
+		# TODO: PKCS11 build-ca parameters on command line
 		# Prepare parameters for PKCS11
 		echo "easy-rsa stores the key specific configuration in the appropriate key file and will not store sensitive information"
-		if [ -z $PKCS11_MODULE ]; then
-			printf "PKCS#11 Module Library: " && read -r PKCS11_MODULE
+		if [ -z $PKCS11_MODULE_PATH ]; then
+			printf "PKCS#11 Module Library: " && read -r PKCS11_MODULE_PATH
 		fi
 		if [ -z $PKCS11_SLOT ]; then
-			pkcs11-tool --module $PKCS11_MODULE --list-slots || die "unable to list slots using $PKCS11_MODULE"
+			pkcs11-tool --module $PKCS11_MODULE_PATH --list-slots || die "unable to list slots using $PKCS11_MODULE_PATH"
 			printf "PKCS#11 Slot ID (hex): " && read -r PKCS11_SLOT
 		fi
 		if [ -z $PKCS11_LABEL ]; then
@@ -734,7 +710,7 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 	fi
 	
 	# Create key pair
-	if [ $PKCS11_MODULE ]; then
+	if [ $pkcs11 ]; then
 		if [ "$EASYRSA_ALGO" = "rsa" ]; then
 			KEY_TYPE=rsa:$EASYRSA_KEY_SIZE
 		elif [ "$EASYRSA_ALGO" = "ec" ]; then
@@ -750,10 +726,11 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 							# TODO: figure out how to determine if the --sensitive flag is available on pkcs11-tool  
 							# --sensitive
 		# Save the parameters for future usage to the out_key file
+		# TODO: Consider replacing with a pkcs11 url passed directly to the engine instead
 		cat > "$out_key_tmp" << EOF
 # Parameters used to use the key in the module
-PKCS11_MODULE=${PKCS11_MODULE}
-PKCS11_SLOT=${PKCS11_SLOT}
+PKCS11_MODULE_PATH=${PKCS11_MODULE_PATH} # Specified in vars as it's global.
+PKCS11_SLOT=${PKCS11_SLOT} 
 PKCS11_LABEL=${PKCS11_LABEL}
 EOF
 	else
@@ -777,10 +754,10 @@ EOF
 	fi
 
 	# create the CA CSR:
-	if [ $PKCS11_ENGINE ]; then
+	if [ $pkcs11 ]; then
 
 		# Create a request where the key is in the PKCS11 device
-		easyrsa_openssl req -utf8 -new -sha256 \
+		easyrsa_openssl req -utf8 -new -sha256 -key label_$PKCS11_LABEL \
 			-out $out_file_tmp \
 			$crypto_opts $opts
 
@@ -1663,7 +1640,6 @@ vars_setup() {
 	# Try to locate a 'vars' file in order of location preference.
 	# If one is found, source it
 	vars=
-
 	# set up program path
 	prog_file="$0"
 	prog_file2="$(which -- "$prog_file" 2>/dev/null)" && prog_file="$prog_file2"
@@ -1851,10 +1827,7 @@ $EASYRSA_EXTRA_EXTS
 subjectAltName = $val" ;;
 	--p11-module)
 		empty_ok=1
-		export PKCS11_MODULE="$val" ;;
-	--p11-engine)
-		empty_ok=1
-		export PKCS11_ENGINE="$val" ;;
+		export PKCS11_MODULE_PATH="$val" ;;
 	--p11-slot)
 		empty_ok=1
 		export PKCS11_SLOT="$val" ;;
