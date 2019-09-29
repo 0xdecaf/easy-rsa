@@ -1,4 +1,14 @@
 # For use with Easy-RSA 3.0+ and OpenSSL or LibreSSL
+openssl_conf = openssl_def
+
+[openssl_def]
+engines = engine_section
+
+[engine_section]
+pkcs11 = pkcs11_section
+
+[pkcs11_section]
+engine_id = pkcs11
 
 ####################################################################
 [ ca ]

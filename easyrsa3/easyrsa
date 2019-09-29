@@ -361,32 +361,33 @@ easyrsa_pkcs11_tool() {
 					--pin $PKCS11_PIN \
 					"$@"
 
-	pkcs11-tool --module $PKCS11_MODULE \
-					--slot $PKCS11_SLOT \
+	pkcs11-tool --module "$PKCS11_MODULE" \
+					--slot "$PKCS11_SLOT" \
 					--login \
-					--pin $PKCS11_PIN \
+					--pin "$PKCS11_PIN" \
 					"$@"
 }
 easyrsa_openssl() {
 	#TODO: "Determine if we can put the pkcs11 configuration in easyrsa_openssl"
-	debug "openssl " "$@"
+	debug "openssl $@"
 	openssl_command=$1; shift
 
 	if [ $PKCS11_ENGINE ]; then
 		KEY_IN_ENGINE=true
+		debug "Assuming PKCS#11 Usage"
 	fi
 	case $openssl_command in
 		makesafeconf) has_config=true;;
 		ca|req|srp|ts) has_config=true;;
 		*) has_config=false;;
 	esac
-	debug "KEY_IN_ENGINE=$KEY_IN_ENGINE has_config=$has_config"
 	# If the key is in the engine, we need to configure it as well
 	if [ "$KEY_IN_ENGINE" = "true" ]; then
 		has_config=true
 	fi
 
 	if ! $has_config; then
+		debug "$EASYRSA_OPENSSL" "$openssl_command" "$@"
 		"$EASYRSA_OPENSSL" "$openssl_command" "$@"
 		return
 	fi
@@ -405,7 +406,7 @@ easyrsa_openssl() {
 		# Temporary file for PKCS11 config
 		pkcs11_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 			# Write a PKCS specific config.  This should also work in easyrsa_openssl()
-			cat << EOF >> $pkcs11_tmp
+			cat > "$pkcs11_tmp" << EOF
 openssl_conf = openssl_def
 
 [openssl_def]
@@ -415,11 +416,8 @@ engines = engine_section
 pkcs11 = pkcs11_section
 
 [pkcs11_section]
-engine_id = easy_pkcs11
-dynamic_path = ${PKCS11_ENGINE}
+engine_id = pkcs11
 MODULE_PATH = ${PKCS11_MODULE}
-PIN = "${PKCS11_PIN}"
-init = 0
 
 [req]
 distinguished_name = req_distinguished_name
@@ -427,10 +425,10 @@ distinguished_name = req_distinguished_name
 [req_distinguished_name]
 
 EOF
-	# Setup parameters to point to the appropriate key
-	openssl_pkcs11_params="-engine pkcs11 -keyform engine -key label_$PKCS11_LABEL"
+		# Setup parameters to point to the appropriate key
+		openssl_pkcs11_params="-engine pkcs11 -keyform engine -key label_$PKCS11_LABEL"
 	fi
-
+	# TODO: If PKCS11_MODULE is configured, 
 	# Make LibreSSL safe config file from OpenSSL config file
 	sed \
 		-e "s\`ENV::EASYRSA\`EASYRSA\`g" \
@@ -457,12 +455,11 @@ EOF
 		cp "$easyrsa_openssl_conf" "$EASYRSA_SAFE_CONF"
 		err=$?
 	else
-		
 		if [ "$KEY_IN_ENGINE" = "true" ]; then
-			
 			debug "Setting Environment variable for PKCS#11 operations"
 			tmp_conf="$pkcs11_tmp"
 		fi
+		debug "Actual: " OPENSSL_CONF=$tmp_conf "$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
 		set -x
 		OPENSSL_CONF=$tmp_conf "$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
 		set +x
@@ -780,11 +777,10 @@ EOF
 	fi
 
 	# create the CA CSR:
-	if [ $PKCS11_MODULE ]; then
+	if [ $PKCS11_ENGINE ]; then
 
 		# Create a request where the key is in the PKCS11 device
-		# TODO: make this an environment variable 
-		key_in_engine=true easyrsa_openssl req -utf8 -new -sha256 \
+		easyrsa_openssl req -utf8 -new -sha256 \
 			-out $out_file_tmp \
 			$crypto_opts $opts
 
@@ -794,9 +790,9 @@ EOF
 
 		#shellcheck disable=SC2086
 		easyrsa_openssl req -utf8 -new \
-			-key "$out_key_tmp" -keyout "$out_key_tmp" \
-			-out "$out_file_tmp" \
-			$crypto_opts $opts ${EASYRSA_PASSIN:+-passin "$EASYRSA_PASSIN"} || \
+			-key "$out_key_tmp" -out "$out_file_tmp" \
+			$crypto_opts $opts \
+			${EASYRSA_PASSIN:+-passin "$EASYRSA_PASSIN"} || \
 			die "Failed to build the CA"
 	fi
 	
@@ -909,7 +905,7 @@ key: $key_out
 
 # common signing backend
 sign_req() {
-	#TODO: "add support for sign-req command"
+	#TODO: "add pkcs#11 support for sign-req command"
 	crt_type="$1"
 	opts=""
 	req_in="$EASYRSA_PKI/reqs/$2.req"
@@ -1010,7 +1006,7 @@ $(display_dn req "$req_in")
 	} > "$ext_tmp" || die "\
 Failed to create temp extension file (bad permissions?) at:
 $ext_tmp"
-
+	cat "$ext_tmp"
 	# sign request
 	# TODO: PKCS11 support for signing operations
 	crt_out_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
