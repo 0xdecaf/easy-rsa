@@ -757,9 +757,10 @@ EOF
 	if [ $pkcs11 ]; then
 
 		# Create a request where the key is in the PKCS11 device
-		easyrsa_openssl req -utf8 -new -sha256 -key label_$PKCS11_LABEL \
-			-out $out_file_tmp \
-			$crypto_opts $opts
+		easyrsa_openssl req -utf8 -new -sha256 \
+			-key label_$PKCS11_LABEL -out $out_file_tmp \
+			$crypto_opts $opts || \
+			die "Failed to build the CA using PKCS#11 token"
 
 	else
 		crypto_opts=""
