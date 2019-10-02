@@ -363,11 +363,11 @@ easyrsa_pkcs11_tool() {
 
 easyrsa_openssl() {
 	#TODO: "Determine if we can put the pkcs11 configuration in easyrsa_openssl"
-	debug "openssl $@"
+	debug "openssl" "$@"
 	openssl_command=$1; shift
 
-	if [ $PKCS11_MODULE_PATH ]; then
-		KEY_IN_ENGINE=true
+	if [ "$PKCS11_MODULE_PATH" ] || [ $pkcs11 ]; then
+		KEY_IN_ENGINE=1
 		debug "Assuming PKCS#11 Usage"
 	fi
 	case $openssl_command in
@@ -417,10 +417,32 @@ easyrsa_openssl() {
 		"$EASYRSA_SSL_CONF" > "$easyrsa_openssl_conf" ||
 		die "Failed to update $easyrsa_openssl_conf"
   
-	if [ $pkcs11 ]; then
+	# Question, should we just always look at the key file if we're here?
+	# If PKCS11_MODULE is not specified, it's probably in the key file where the pointers for the key are
+	debug "PKCS11_MODULE=" "$PKCS11_MODULE"
+	if [ -z "$PKCS11_MODULE" ]; then
+		debug "Attempting to read key file"
+		set -x
+		# Find the private key file
+		ca_key_file=$( sed -n "s/private_key\s*=\s*\(.*\)\s*#.*$/\1/p" "$easyrsa_openssl_conf" | xargs echo )
+		
+		# Check to see that it exists
+		if [ -f "$ca_key_file" ]; then
+			grep PRIVATE "$ca_key_file"
+			is_key=$?
+			if ! $is_key; then
+				debug "Sourcing" "$ca_key_file"
+				. "$ca_key_file"
+			fi
+		fi
+		
+		set +x
+		
+	fi
+
+	if [ -n "$PKCS11_LABEL" ]; then
 	  set -x
 		#cat $easyrsa_openssl_conf
-		# TODO: configure private_key=label_$PKCS11_
 		sed -i'' -e "s/=.*\/private\/ca.key/= label_$PKCS11_LABEL/g" "$easyrsa_openssl_conf" \
 			|| die "Failed to configure PKCS#11 token"
 		set +x
@@ -436,10 +458,10 @@ easyrsa_openssl() {
 		debug "Actual: " "$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
 		set -x
 		"$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
-		set +x
 		err=$?
+		set +x
 	fi
-
+	#read -r TEST
 	rm -f "$easyrsa_openssl_conf"
 	rm -f "$easyrsa_extra_exts"
 	return $err
@@ -691,7 +713,7 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 		#TODO: "Create error handling for PKCS11 key files being used as keys"
 		#TODO: "Create command to extract a certificate from a key and bootstrap a new CA
 		#		(maybe ask the user if that is what they want if the slot has everything that is needed)"
-	elif [ ! $nopass ] && ( [ -z "$EASYRSA_PASSOUT" ] || [ -z "$EASYRSA_PASSIN" ] ); then
+	elif [ ! $nopass ] && { [ -z "$EASYRSA_PASSOUT" ] || [ -z "$EASYRSA_PASSIN" ]; }; then
 		out_key_pass_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 		echo
 		printf "Enter New CA Key Passphrase: "
