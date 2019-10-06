@@ -453,7 +453,7 @@ easyrsa_openssl() {
 		"$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
 		err=$?
 	fi
-	read -s TEST
+	
 	rm -f "$easyrsa_openssl_conf"
 	rm -f "$easyrsa_extra_exts"
 	return $err
