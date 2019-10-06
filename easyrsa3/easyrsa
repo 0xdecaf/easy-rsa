@@ -340,21 +340,20 @@ cleanup() {
 	echo "" # just to get a clean line
 } # => cleanup()
 
+
 debug() {
+	red=$(tput setaf 1)
+	green=$(tput setaf 3)
+	reset=$(tput sgr0)
+
+	echo -e "${red}DEBUG: ${green}[$(caller)]${red}" "$@" "${reset}" > /dev/stderr
 	return 0
 }
-# debug() {
-# 	red=$(tput setaf 1)
-# 	green=$(tput setaf 3)
-# 	reset=$(tput sgr0)
-
-# 	echo -e "${red}DEBUG: ${green}[$(caller)]${red}" "$@" "${reset}" > /dev/stderr
-# }
 easyrsa_pkcs11_tool() {
-	debug pkcs11-tool --module $PKCS11_MODULE_PATH \
-					--slot $PKCS11_SLOT \
+	debug pkcs11-tool --module "$PKCS11_MODULE_PATH" \
+					--slot "$PKCS11_SLOT" \
 					--login \
-					--pin $PKCS11_PIN \
+					--pin "$PKCS11_PIN" \
 					"$@"
 
 	pkcs11-tool --module "$PKCS11_MODULE_PATH" \
@@ -394,7 +393,7 @@ easyrsa_openssl() {
 	# Question, should we just always look at the key file if we're here?
 	# If PKCS11_MODULE is not specified, it's probably in the key file where the pointers for the key are
 
-	if [ -z "$PKCS11_MODULE_PATH" ]; then
+	#if [ -z "$PKCS11_MODULE_PATH" ]; then
 		# Find the private key file
 		ca_key_file="${EASYRSA_PKI}/private/ca.key"
 		debug "$ca_key_file"
@@ -407,9 +406,10 @@ easyrsa_openssl() {
 			if [ $is_pkcs11_config -eq 1 ]; then
 				# shellcheck disable=SC1090
 				. "$ca_key_file"
+				pkcs11=1 # a hint for when we call the engine later
 			fi
 		fi
-	fi
+	#fi
 
 	# Make LibreSSL safe config file from OpenSSL config file
 	sed \
@@ -430,15 +430,16 @@ easyrsa_openssl() {
 		-e "s\`\$EASYRSA_REQ_CN\`$EASYRSA_REQ_CN\`g" \
 		-e "s\`\$EASYRSA_REQ_EMAIL\`$EASYRSA_REQ_EMAIL\`g" \
 		-e "s\`\$ENV::PKCS11_MODULE_PATH\`$PKCS11_MODULE_PATH\`g" \
+		-e "s\`\$ENV::PKCS11_PIN\`$PKCS11_PIN\`g" \
 		${EASYRSA_EXTRA_EXTS:+-e "/^#%EXTRA_EXTS%/r $easyrsa_extra_exts"} \
 		"$EASYRSA_SSL_CONF" > "$easyrsa_openssl_conf" ||
 		die "Failed to update $easyrsa_openssl_conf"
   
-	# TODO: Include the PIN in the openssl config
+	# TODO: Include the PIN in the openssl config if it's specified in the key
 	# TODO: Consider using bash redirection to create file handles only readable by this process for temp files passed to openssl
 	#       This will be important if we really want to put the PIN in the config so there isn't a chance of it leaking.
 	
-	if [ -n "$PKCS11_LABEL" ]; then
+	if [ $pkcs11 ]; then
 		#cat $easyrsa_openssl_conf
 		sed -i'' -e "s/=.*\/private\/ca.key/= label_$PKCS11_LABEL/g" "$easyrsa_openssl_conf" \
 			|| die "Failed to configure PKCS#11 token"
@@ -756,7 +757,7 @@ EOF
 		elif [ "$EASYRSA_ALGO" = "ec" ]; then
 			#shellcheck disable=SC2086
 			"$EASYRSA_OPENSSL" ec -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"}
-
+			#shellcheck disable=SC2086
 			"$EASYRSA_OPENSSL" ecparam -in "$EASYRSA_ALGO_PARAMS" -genkey | \
 				"$EASYRSA_OPENSSL" ec -out "$out_key_tmp" $crypto_opts ${EASYRSA_PASSOUT:+-passout "$EASYRSA_PASSOUT"} || \
 				die "Failed create CA private key"
@@ -767,8 +768,9 @@ EOF
 	if [ $pkcs11 ]; then
 
 		# Create a request where the key is in the PKCS11 device
+		#shellcheck disable=SC2086
 		easyrsa_openssl req -utf8 -new -sha256 \
-			-key label_$PKCS11_LABEL -out $out_file_tmp \
+			-key "label_$PKCS11_LABEL" -out "$out_file_tmp" \
 			$crypto_opts $opts || \
 			die "Failed to build the CA using PKCS#11 token"
 

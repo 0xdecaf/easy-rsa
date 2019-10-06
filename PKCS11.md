@@ -39,8 +39,8 @@ Environment Variables
 * [ ] ... and import signed certificate
 * [x] Sign a server certificate
 * [x] Sign a client certificate
-* [ ] Revoke a certificate
+* [x] Revoke a certificate
 * [x] Renew a certificate
-* [ ] BUG: Fix issue with `openssl: undefined symbol: C_GetFunctionList` when trying to revoke
+* [x] BUG: Fix issue with `openssl: undefined symbol: C_GetFunctionList` when trying to revoke
 * [x] Get PKCS11 module information from key file (if configured)
 * [ ] If a key is being created on a device, ensure the label isn't alreay used by the same type of key

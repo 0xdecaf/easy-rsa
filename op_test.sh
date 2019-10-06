@@ -340,7 +340,9 @@ action ()
 	then
 		newline
 		# shellcheck disable=SC2086
-		"$ERSA_BIN" $STEP_NAME >/dev/null 2>&1 || die "$STEP_NAME"
+		"$ERSA_BIN" $STEP_NAME || die "$STEP_NAME"
+		# TODO: put back
+		#"$ERSA_BIN" $STEP_NAME >/dev/null 2>&1 || die "$STEP_NAME"
 	else
 		# shellcheck disable=SC2086
 		"$ERSA_BIN" $STEP_NAME || die "$STEP_NAME"
