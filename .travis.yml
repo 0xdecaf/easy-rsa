@@ -22,6 +22,7 @@ matrix:
         - PKCS11_MODULE=/usr/lib/softhsm/libsofthsm2.so
         - PKCS11_PIN=1234
         - PKCS11_LABEL=my-test-token
+        - TEST_PKCS11=1
       before_install:
         # opensc to get pkcs11-tool
         - sudo apt-get install -y opensc softhsm2 libengine-pkcs11-openssl1.1

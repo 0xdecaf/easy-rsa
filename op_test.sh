@@ -358,7 +358,11 @@ init_pki ()
 
 build_ca ()
 {
-	STEP_NAME="build-ca nopass pkcs11"
+	if [ -z $TEST_PKCS11 ]; then
+		STEP_NAME="build-ca nopass"
+	else
+		STEP_NAME="build-ca pkcs11"
+	fi
 	export EASYRSA_REQ_CN="penelope"
 	action
 	unset EASYRSA_REQ_CN
