@@ -10,7 +10,7 @@ pkcs11 = pkcs11_section
 [pkcs11_section]
 engine_id = pkcs11
 MODULE_PATH = $ENV::PKCS11_MODULE_PATH
-
+PIN = "1234"
 ####################################################################
 [ ca ]
 default_ca	= CA_default		# The default ca section

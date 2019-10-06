@@ -341,12 +341,15 @@ cleanup() {
 } # => cleanup()
 
 debug() {
-	red=$(tput setaf 1)
-	green=$(tput setaf 3)
-	reset=$(tput sgr0)
-
-	echo -e "${red}DEBUG: ${green}[$(caller)]${red}" "$@" "${reset}" > /dev/stderr
+	return 0
 }
+# debug() {
+# 	red=$(tput setaf 1)
+# 	green=$(tput setaf 3)
+# 	reset=$(tput sgr0)
+
+# 	echo -e "${red}DEBUG: ${green}[$(caller)]${red}" "$@" "${reset}" > /dev/stderr
+# }
 easyrsa_pkcs11_tool() {
 	debug pkcs11-tool --module $PKCS11_MODULE_PATH \
 					--slot $PKCS11_SLOT \

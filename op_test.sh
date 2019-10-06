@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # Runs operational testing
-
+set -x
 set -e
 
 usage ()
@@ -356,7 +356,7 @@ init_pki ()
 
 build_ca ()
 {
-	STEP_NAME="build-ca nopass"
+	STEP_NAME="build-ca nopass pkcs11"
 	export EASYRSA_REQ_CN="penelope"
 	action
 	unset EASYRSA_REQ_CN
