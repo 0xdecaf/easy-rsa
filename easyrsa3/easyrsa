@@ -388,6 +388,27 @@ easyrsa_openssl() {
 		EOF
 	fi
 	
+	# Question, should we just always look at the key file if we're here?
+	# If PKCS11_MODULE is not specified, it's probably in the key file where the pointers for the key are
+
+	if [ -z "$PKCS11_MODULE_PATH" ]; then
+		debug "PKCS11_MODULE_PATH not specified"
+		# Find the private key file
+		#ca_key_file=$( sed -n "s/private_key\s*=\s*\(.*\)\s*#.*$/\1/p" "$easyrsa_openssl_conf" | xargs echo )
+		ca_key_file="${EASYRSA_PKI}/private/ca.key"
+		debug "$ca_key_file"
+		# Check to see that it exists
+		if [ -f "$ca_key_file" ]; then
+			
+			grep PRIVATE "$ca_key_file"
+			is_pkcs11_config=$?
+			# If the file isn't an actual key, let's source it! (TODO: implement same method as vars file for loading config?)
+			if [ $is_pkcs11_config -eq 1 ]; then
+				debug "Loading PKCS#11 Key Information"
+				. "$ca_key_file"
+			fi
+		fi
+	fi
 
 	# Make LibreSSL safe config file from OpenSSL config file
 	sed \
@@ -415,22 +436,6 @@ easyrsa_openssl() {
 	# TODO: Include the PIN in the openssl config
 	# TODO: Consider using bash redirection to create file handles only readable by this process for temp files passed to openssl
 	#       This will be important if we really want to put the PIN in the config so there isn't a chance of it leaking.
-
-	# Question, should we just always look at the key file if we're here?
-	# If PKCS11_MODULE is not specified, it's probably in the key file where the pointers for the key are
-	if [ -z "$PKCS11_MODULE" ]; then
-		# Find the private key file
-		ca_key_file=$( sed -n "s/private_key\s*=\s*\(.*\)\s*#.*$/\1/p" "$easyrsa_openssl_conf" | xargs echo )
-		# Check to see that it exists
-		if [ -f "$ca_key_file" ]; then
-			grep PRIVATE "$ca_key_file"
-			is_pkcs11_config=$?
-			# If the file isn't an actual key, let's source it! (TODO: implement same method as vars file for loading config?)
-			if [ $is_pkcs11_config -eq 1 ]; then
-				. "$ca_key_file"
-			fi
-		fi
-	fi
 	
 	if [ -n "$PKCS11_LABEL" ]; then
 		#cat $easyrsa_openssl_conf
@@ -448,7 +453,7 @@ easyrsa_openssl() {
 		"$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
 		err=$?
 	fi
-
+	read -s TEST
 	rm -f "$easyrsa_openssl_conf"
 	rm -f "$easyrsa_extra_exts"
 	return $err
