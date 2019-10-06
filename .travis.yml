@@ -2,7 +2,7 @@ language: bash
 sudo: false
 
 matrix:
-  #allow_failures:
+  allow_failures:
   include:
 
     - os: linux
@@ -31,13 +31,13 @@ matrix:
       script:
         - export PKCS11_SLOT=`sudo softhsm2-util --show-slots | grep ^Slot | head -n 1 | cut -d ' ' -f 2`
         - openssl version
-        #- shellcheck --version
-        #- bash -c 'export SHELLCHECK_OPTS="-S warning -e SC2006"; shopt -s globstar; shellcheck **/*.sh easyrsa3/easyrsa'
+        - shellcheck --version
+        - bash -c 'export SHELLCHECK_OPTS="-S warning -e SC2006"; shopt -s globstar; shellcheck **/*.sh easyrsa3/easyrsa'
         - sudo sh op_test.sh -vv
 
-    # - os: osx
-    #   osx_image: xcode10.1
-    #   script:
-    #     - openssl version
-    #     - sh op_test.sh -vv
+    - os: osx
+      osx_image: xcode10.1
+      script:
+        - openssl version
+        - sh op_test.sh -vv
 

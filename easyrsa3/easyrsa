@@ -74,7 +74,7 @@ cmd_help() {
       			opts="
         nopass  - do not encrypt the CA key (default is encrypted)
         subca   - create a sub-CA keypair and request (default is a root CA)
-				pkcs11  - Use a PKCS#11 token for key storage (nopass ignored)" ;;
+		pkcs11  - Use a PKCS#11 token for key storage (nopass ignored)" ;;
 		gen-dh) text="
   gen-dh
       Generates DH (Diffie-Hellman) parameters" ;;
@@ -230,9 +230,10 @@ Certificate & Request options: (these impact cert/req field values)
 --copy-ext      : Copy included request X509 extensions (namely subjAltName
 
 PKCS#11 Options:
-#TODO: Determine which global options are appropriate
---p11-module=PATH 	: Path to the module to use for the PKCS#11 interface
---p11-pin=PIN		    : PIN number, if not specified will be asked for
+--module=PATH 	: Path to the module to use for the PKCS#11 interface
+--slot=SLOT_ID  : Hexidecimal slot identifier
+--label=CA_KEY_LABEL : Unique name for CA key in the specified slot
+--pin=PIN		: Token PIN, if not specified will be asked for
 
 Organizational DN options: (only used with the 'org' DN mode)
   (values may be blank for org DN options)
@@ -340,16 +341,20 @@ cleanup() {
 	echo "" # just to get a clean line
 } # => cleanup()
 
-
+# outputs with color to stderr to aid in debugging
 debug() {
-	red=$(tput setaf 1)
-	green=$(tput setaf 3)
-	reset=$(tput sgr0)
-
-	echo -e "${red}DEBUG: ${green}[$(caller)]${red}" "$@" "${reset}" > /dev/stderr
+	# if [ "$EASYRSA_DEBUG" = "1" ]; then
+	# 	red=$(tput setaf 1)
+	# 	green=$(tput setaf 3)
+	# 	reset=$(tput sgr0)
+	# 	#shellcheck disable=SC2039
+	# 	echo -e "${red}DEBUG: ${green}[$(caller)]${red}" "$@" "${reset}" > /dev/stderr
+	# fi
 	return 0
 }
+
 easyrsa_pkcs11_tool() {
+
 	debug pkcs11-tool --module "$PKCS11_MODULE_PATH" \
 					--slot "$PKCS11_SLOT" \
 					--login \
@@ -390,27 +395,26 @@ easyrsa_openssl() {
 		EOF
 	fi
 	
-	# Question, should we just always look at the key file if we're here?
-	# If PKCS11_MODULE is not specified, it's probably in the key file where the pointers for the key are
-
-	#if [ -z "$PKCS11_MODULE_PATH" ]; then
-		# Find the private key file
-		ca_key_file="${EASYRSA_PKI}/private/ca.key"
-		debug "$ca_key_file"
-		# Check to see that it exists
-		if [ -f "$ca_key_file" ]; then
-			grep PRIVATE "$ca_key_file"
-			is_pkcs11_config=$?
-			# If the file isn't an actual key, let's source it! 
-			# TODO: implement same method as vars file for loading config?
-			if [ $is_pkcs11_config -eq 1 ]; then
-				# shellcheck disable=SC1090
-				. "$ca_key_file"
-				pkcs11=1 # a hint for when we call the engine later
-			fi
+	
+	# Find the private key file
+	ca_key_file="${EASYRSA_PKI}/private/ca.key"
+	debug "$ca_key_file"
+	# Check to see that it exists
+	if [ -f "$ca_key_file" ]; then
+		grep PRIVATE "$ca_key_file"
+		is_pkcs11_config=$?
+		# If the file isn't an actual key, let's source it! 
+		# TODO: implement same method as vars file for loading config?
+		if [ $is_pkcs11_config -eq 1 ]; then
+			# shellcheck disable=SC1090
+			. "$ca_key_file"
+			pkcs11=1 # a hint for when we call the engine later
 		fi
-	#fi
-
+	fi
+	
+	if [ -n "$PKCS11_PIN" ] && [ $pkcs11 ]; then
+		PKCS11_PIN_EXPANDED="PIN=${PKCS11_PIN}"
+	fi
 	# Make LibreSSL safe config file from OpenSSL config file
 	sed \
 		-e "s\`ENV::EASYRSA\`EASYRSA\`g" \
@@ -430,20 +434,18 @@ easyrsa_openssl() {
 		-e "s\`\$EASYRSA_REQ_CN\`$EASYRSA_REQ_CN\`g" \
 		-e "s\`\$EASYRSA_REQ_EMAIL\`$EASYRSA_REQ_EMAIL\`g" \
 		-e "s\`\$ENV::PKCS11_MODULE_PATH\`$PKCS11_MODULE_PATH\`g" \
-		-e "s\`\$ENV::PKCS11_PIN\`$PKCS11_PIN\`g" \
+		-e "s\`\$ENV::PKCS11_PIN_EXPANDED\`$PKCS11_PIN_EXPANDED\`g" \
 		${EASYRSA_EXTRA_EXTS:+-e "/^#%EXTRA_EXTS%/r $easyrsa_extra_exts"} \
 		"$EASYRSA_SSL_CONF" > "$easyrsa_openssl_conf" ||
 		die "Failed to update $easyrsa_openssl_conf"
   
-	# TODO: Include the PIN in the openssl config if it's specified in the key
 	# TODO: Consider using bash redirection to create file handles only readable by this process for temp files passed to openssl
 	#       This will be important if we really want to put the PIN in the config so there isn't a chance of it leaking.
 	
 	if [ $pkcs11 ]; then
-		#cat $easyrsa_openssl_conf
 		sed -i'' -e "s/=.*\/private\/ca.key/= label_$PKCS11_LABEL/g" "$easyrsa_openssl_conf" \
 			|| die "Failed to configure PKCS#11 token"
-		# Setup parameters to point to the appropriate key
+		# Setup parameters to use OpenSSL Engine
 		openssl_pkcs11_params="-engine pkcs11 -keyform engine"
 	fi
 
@@ -451,11 +453,11 @@ easyrsa_openssl() {
 		cp "$easyrsa_openssl_conf" "$EASYRSA_SAFE_CONF"
 		err=$?
 	else
-		debug "Actual: " "$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
+		#shellcheck disable=SC2086
 		"$EASYRSA_OPENSSL" "$openssl_command" -config "$easyrsa_openssl_conf" $openssl_pkcs11_params "$@"
 		err=$?
 	fi
-	
+
 	rm -f "$easyrsa_openssl_conf"
 	rm -f "$easyrsa_extra_exts"
 	return $err
@@ -638,7 +640,7 @@ build_ca() {
 
 	verify_pki_init
 	[ "$EASYRSA_ALGO" = "ec" ] && verify_curve
-	
+
 	# setup for the simpler sub-CA situation and overwrite with root-CA if needed:
 	out_file="$EASYRSA_PKI/reqs/ca.req"
 	out_key="$EASYRSA_PKI/private/ca.key"
@@ -647,13 +649,12 @@ build_ca() {
 		opts="$opts -x509 -days $EASYRSA_CA_EXPIRE "
 	fi
 
-	# Test for existing CA, and complain if already present	
+	# Test for existing CA, and complain if already present
 	if verify_ca_init test; then
 		die "\
 Unable to create a CA as you already seem to have one set up.
 If you intended to start a new CA, run init-pki first."
 	fi
-
 	# If a private key exists here, a sub-ca was created but not signed.
 	# Notify the user and require a signed ca.crt or a init-pki:
 	[ -f "$out_key" ] && \
@@ -678,6 +679,7 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 	# Default CN only when not in global EASYRSA_BATCH mode:
 	# shellcheck disable=SC2015
 	[ "$EASYRSA_BATCH" ] && opts="$opts -batch" || export EASYRSA_REQ_CN="Easy-RSA CA"
+
 	out_key_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 	out_file_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 
@@ -692,16 +694,13 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 			printf "PKCS#11 Slot ID (hex): " && read -r PKCS11_SLOT
 		fi
 		if [ -z "$PKCS11_LABEL" ]; then
-			#TODO: "Validate PKCS11_LABEL otherwise a segfault is appearing"
+			# TODO: "Validate PKCS11_LABEL otherwise a segfault is appearing"
 			printf "PKCS#11 Object Label: " && read -r PKCS11_LABEL
 		fi
 		if [ -z "$PKCS11_PIN" ]; then
 			printf "PKCS#11 PIN: " && hide_read_pass PKCS11_PIN
 		fi
 		
-		#TODO: "Create error handling for PKCS11 key files being used as keys"
-		#TODO: "Create command to extract a certificate from a key and bootstrap a new CA
-		#		(maybe ask the user if that is what they want if the slot has everything that is needed)"
 	elif [ ! $nopass ] && { [ -z "$EASYRSA_PASSOUT" ] || [ -z "$EASYRSA_PASSIN" ]; }; then
 		out_key_pass_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 		echo
@@ -995,7 +994,7 @@ $(display_dn req "$req_in")
 	} > "$ext_tmp" || die "\
 Failed to create temp extension file (bad permissions?) at:
 $ext_tmp"
-	cat "$ext_tmp"
+
 	# sign request
 	crt_out_tmp="$(easyrsa_mktemp)" || die "Failed to create temporary file"
 	easyrsa_openssl ca -utf8 -in "$req_in" -out "$crt_out_tmp" \
@@ -1058,7 +1057,6 @@ Matching file found at: "
 
 # revoke backend
 revoke() {
-	#TODO: "Add PKCS#11 support for revoke command"
 	verify_ca_init
 
 	# pull filename base:
@@ -1650,6 +1648,7 @@ vars_setup() {
 	# Try to locate a 'vars' file in order of location preference.
 	# If one is found, source it
 	vars=
+	
 	# set up program path
 	prog_file="$0"
 	prog_file2="$(which -- "$prog_file" 2>/dev/null)" && prog_file="$prog_file2"
@@ -1710,7 +1709,8 @@ Note: using Easy-RSA configuration from: $vars"
 	set_var EASYRSA_DIGEST		sha256
 	set_var EASYRSA_SSL_CONF	"$EASYRSA_PKI/openssl-easyrsa.cnf"
 	set_var EASYRSA_SAFE_CONF	"$EASYRSA_PKI/safessl-easyrsa.cnf"
-
+	set_var EASYRSA_PKCS11TOOL  pkcs11-tool
+	
 	# Same as above for the x509-types extensions dir
 	if [ -d "$EASYRSA_PKI/x509-types" ]; then
 		set_var EASYRSA_EXT_DIR		"$EASYRSA_PKI/x509-types"
@@ -1835,16 +1835,16 @@ while :; do
 		export EASYRSA_EXTRA_EXTS="\
 $EASYRSA_EXTRA_EXTS
 subjectAltName = $val" ;;
-	--p11-module)
+	--module)
 		empty_ok=1
 		export PKCS11_MODULE_PATH="$val" ;;
-	--p11-slot)
+	--slot)
 		empty_ok=1
 		export PKCS11_SLOT="$val" ;;
-	--p11-pin)
+	--pin)
 		empty_ok=1
 		export PKCS11_PIN="$val" ;;
-	--p11-label)
+	--label)
 		empty_ok=1
 		export PKCS11_LABEL="$val" ;;
 	*)

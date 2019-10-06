@@ -44,3 +44,5 @@ Environment Variables
 * [x] BUG: Fix issue with `openssl: undefined symbol: C_GetFunctionList` when trying to revoke
 * [x] Get PKCS11 module information from key file (if configured)
 * [ ] If a key is being created on a device, ensure the label isn't alreay used by the same type of key
+* [ ] Add check to ensure openssl pkcs11 engine is installed and library able to be found.
+* [ ] Create command to extract a certificate from a key and bootstrap a new CA (maybe ask the user if that is what they want if the slot has everything that is needed)
