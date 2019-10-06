@@ -395,19 +395,17 @@ easyrsa_openssl() {
 	# If PKCS11_MODULE is not specified, it's probably in the key file where the pointers for the key are
 
 	if [ -z "$PKCS11_MODULE_PATH" ]; then
-		debug "PKCS11_MODULE_PATH not specified"
 		# Find the private key file
-		#ca_key_file=$( sed -n "s/private_key\s*=\s*\(.*\)\s*#.*$/\1/p" "$easyrsa_openssl_conf" | xargs echo )
 		ca_key_file="${EASYRSA_PKI}/private/ca.key"
 		debug "$ca_key_file"
 		# Check to see that it exists
 		if [ -f "$ca_key_file" ]; then
-			
 			grep PRIVATE "$ca_key_file"
 			is_pkcs11_config=$?
-			# If the file isn't an actual key, let's source it! (TODO: implement same method as vars file for loading config?)
+			# If the file isn't an actual key, let's source it! 
+			# TODO: implement same method as vars file for loading config?
 			if [ $is_pkcs11_config -eq 1 ]; then
-				debug "Loading PKCS#11 Key Information"
+				# shellcheck disable=SC1090
 				. "$ca_key_file"
 			fi
 		fi
