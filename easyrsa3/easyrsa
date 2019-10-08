@@ -1698,6 +1698,7 @@ vars_setup() {
 	# Try to locate a 'vars' file in order of location preference.
 	# If one is found, source it
 	vars=
+
 	# set up program path
 	prog_file="$0"
 	prog_file2="$(which -- "$prog_file" 2>/dev/null)" && prog_file="$prog_file2"
