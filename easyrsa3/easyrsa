@@ -355,13 +355,13 @@ debug() {
 
 easyrsa_pkcs11_tool() {
 
-	debug pkcs11-tool --module "$PKCS11_MODULE_PATH" \
+	debug "$EASYRSA_PKCS11TOOL" --module "$PKCS11_MODULE_PATH" \
 					--slot "$PKCS11_SLOT" \
 					--login \
 					--pin "$PKCS11_PIN" \
 					"$@"
 
-	pkcs11-tool --module "$PKCS11_MODULE_PATH" \
+	"$EASYRSA_PKCS11TOOL" --module "$PKCS11_MODULE_PATH" \
 					--slot "$PKCS11_SLOT" \
 					--login \
 					--pin "$PKCS11_PIN" \
@@ -707,7 +707,7 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 			printf "PKCS#11 Module Library: " && read -r PKCS11_MODULE_PATH
 		fi
 		if [ -z "$PKCS11_SLOT" ]; then
-			easyrsa_pkcs11_tool --module "$PKCS11_MODULE_PATH" --list-slots || die "unable to list slots using" "$PKCS11_MODULE_PATH"
+			"$EASYRSA_PKCS11TOOL" --module "$PKCS11_MODULE_PATH" --list-slots || die "unable to list slots using" "$PKCS11_MODULE_PATH"
 			printf "PKCS#11 Slot ID (hex): " && read -r PKCS11_SLOT
 		fi
 		if [ -z "$PKCS11_LABEL" ]; then
@@ -755,8 +755,8 @@ current CA keypair. If you intended to start a new CA, run init-pki first."
 		# Save the parameters for future usage to the out_key file
 		# TODO: Consider replacing with a pkcs11 url passed directly to the engine instead
 		cat > "$out_key_tmp" << EOF
-# Parameters used to use the key in the module
-PKCS11_MODULE_PATH=${PKCS11_MODULE_PATH} # Specified in vars as it's global.
+# EasyRSA variables pointing to the private key object
+PKCS11_MODULE_PATH=${PKCS11_MODULE_PATH}
 PKCS11_SLOT=${PKCS11_SLOT} 
 PKCS11_LABEL=${PKCS11_LABEL}
 EOF
