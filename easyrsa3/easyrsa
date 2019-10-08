@@ -74,7 +74,7 @@ cmd_help() {
       			opts="
         nopass  - do not encrypt the CA key (default is encrypted)
         subca   - create a sub-CA keypair and request (default is a root CA)
-		pkcs11  - Use a PKCS#11 token for key storage (nopass ignored)" ;;
+        pkcs11  - Use a PKCS#11 token for key storage (nopass ignored)" ;;
 		gen-dh) text="
   gen-dh
       Generates DH (Diffie-Hellman) parameters" ;;
@@ -395,15 +395,14 @@ easyrsa_openssl() {
 		EOF
 	fi
 	
-	
 	# Find the private key file
 	ca_key_file="${EASYRSA_PKI}/private/ca.key"
-	debug "$ca_key_file"
+
 	# Check to see that it exists
 	if [ -f "$ca_key_file" ]; then
 		grep PRIVATE "$ca_key_file"
 		is_pkcs11_config=$?
-		# If the file isn't an actual key, let's source it! 
+		# If the file isn't an actual key, source it 
 		# TODO: implement same method as vars file for loading config?
 		if [ $is_pkcs11_config -eq 1 ]; then
 			# shellcheck disable=SC1090
@@ -458,8 +457,9 @@ EOF
 		"$EASYRSA_SSL_CONF" >> "$easyrsa_openssl_conf" ||
 		die "Failed to update $easyrsa_openssl_conf"
   
-	# TODO: Consider using bash redirection to create file handles only readable by this process for temp files passed to openssl
-	#       This will be important if we really want to put the PIN in the config so there isn't a chance of it leaking.
+	# TODO: Consider using bash redirection to create file handles only readable by this process for temp files passed
+	#		to openssl.  This will be important if we really want to put the PIN in the config so there isn't a chance
+	#       of it being exposed through temp files.
 	
 	if [ $pkcs11 ]; then
 		sed -i'' -e "s/=.*\/private\/ca.key/= label_$PKCS11_LABEL/g" "$easyrsa_openssl_conf" \
@@ -1698,7 +1698,6 @@ vars_setup() {
 	# Try to locate a 'vars' file in order of location preference.
 	# If one is found, source it
 	vars=
-	
 	# set up program path
 	prog_file="$0"
 	prog_file2="$(which -- "$prog_file" 2>/dev/null)" && prog_file="$prog_file2"
